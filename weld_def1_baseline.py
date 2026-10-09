@@ -1,26 +1,3 @@
-"""
-EXPERIMENT 2 - STANDARD EfficientNetB0 BASELINE  (corrected version)
-====================================================================
-Changes vs. the original weld_def1.py:
-  [C1] Wall-clock training and per-image inference time are now measured and
-       saved, so the paper no longer has to omit the computational comparison.
-  [C2] Per-class ROC-AUC and average precision are written to metrics.json
-       instead of existing only inside a PNG.
-  [C3] Publication-quality figure styling: IEEE column width, serif fonts at
-       readable size, no overlapping suptitles.
-  [C4] A radiograph-level leakage audit is run and saved to
-       leakage_audit.json, which resolves the open question in the paper's
-       Limitations section.
-  [C5] EPOCHS_EXECUTED is recorded explicitly so the paper can never again
-       disagree with the history CSV.
-  [C6] Paper-ready figures are exported to paper_figures/ under the exact
-       filenames the LaTeX expects.
-
-Everything scientifically load-bearing is UNCHANGED: architecture,
-preprocessing, augmentation, optimizer, learning rate, batch size, callbacks,
-seed and evaluation protocol are identical to the original run.
-"""
-
 import os, json, time, random, re, argparse
 from collections import defaultdict
 
@@ -49,9 +26,8 @@ from sklearn.metrics import (
 )
 from sklearn.preprocessing import label_binarize
 
-# ============================================================
 # 1. CONFIGURATION
-# ============================================================
+
 ap = argparse.ArgumentParser()
 ap.add_argument("--root", default="RIAWELC_dataset/DB - Copy",
                 help="dataset root. Use DB_weldlevel for the weld-level split.")
@@ -80,8 +56,7 @@ BATCH_SIZE = 16
 MAX_EPOCHS = 40
 INIT_LR    = 1e-4
 
-# [C3] publication-quality plotting defaults
-IEEE_COL = 3.45                                    # inches, one IEEE column
+IEEE_COL = 3.45                                    
 plt.rcParams.update({
     "font.family": "serif", "font.size": 8,
     "axes.titlesize": 8.5, "axes.labelsize": 8,
@@ -95,9 +70,8 @@ def save(fig, *paths):
         fig.savefig(p)
     plt.close(fig)
 
-# ============================================================
 # 2. DATA GENERATORS  (augmentation on TRAIN only)
-# ============================================================
+
 train_datagen = ImageDataGenerator(
     preprocessing_function=preprocess_input,
     rotation_range=20, zoom_range=0.20,
@@ -124,9 +98,8 @@ print("Classes:", class_indices)
 with open(os.path.join(OUTPUT_DIR, "class_indices.json"), "w") as f:
     json.dump(class_indices, f, indent=2)
 
-# ------------------------------------------------------------
 # Dataset distribution table + Fig. 1
-# ------------------------------------------------------------
+
 def counts(gen):
     c = np.bincount(gen.classes, minlength=NUM_CLASSES)
     return c
@@ -156,9 +129,8 @@ ax.grid(axis="y", alpha=0.3); ax.set_axisbelow(True)
 save(fig, os.path.join(OUTPUT_DIR, "01_dataset_distribution.png"),
           os.path.join(PAPER_DIR,  "fig01_dataset_distribution.png"))
 
-# ============================================================
 # 3. [C4] RADIOGRAPH-LEVEL LEAKAGE AUDIT
-# ============================================================
+
 PARENT_RE = re.compile(r"_\[\d+\]\[\d+\]\.png$", re.IGNORECASE)
 
 def parents(gen):
@@ -193,9 +165,8 @@ print("test patches whose parent also appears in training:",
       f'({100*audit["test_patches_with_shared_parent"]/len(test_gen.filenames):.1f}% of test)')
 print("==========================================\n")
 
-# ============================================================
 # 4. MODEL  (unchanged architecture)
-# ============================================================
+
 base_model = EfficientNetB0(
     weights="imagenet", include_top=False,
     input_tensor=Input(shape=(IMG_SIZE, IMG_SIZE, 3)))
@@ -215,9 +186,8 @@ model.summary()
 total_params     = int(model.count_params())
 trainable_params = int(sum(np.prod(v.shape) for v in model.trainable_weights))
 
-# ============================================================
 # 5. TRAIN  ([C1] timed)
-# ============================================================
+
 class LearningRateLogger(Callback):
     def on_epoch_end(self, epoch, logs=None):
         lr = self.model.optimizer.learning_rate
@@ -246,9 +216,8 @@ print(f"\nEPOCHS EXECUTED: {EPOCHS_EXECUTED}   BEST EPOCH: {BEST_EPOCH}")
 print(f"TRAINING TIME: {train_seconds/60:.1f} min "
       f"({train_seconds/EPOCHS_EXECUTED:.1f} s/epoch)")
 
-# ------------------------------------------------------------
 # Figs. 2 and 3 - accuracy and loss
-# ------------------------------------------------------------
+
 ep = np.arange(1, EPOCHS_EXECUTED + 1)
 
 fig, ax = plt.subplots(figsize=(IEEE_COL, 1.95))
@@ -272,9 +241,8 @@ ax.grid(alpha=0.3, which="both")
 save(fig, os.path.join(OUTPUT_DIR, "03_loss_curve.png"),
           os.path.join(PAPER_DIR,  "fig03_base_loss.png"))
 
-# ============================================================
 # 6. TEST EVALUATION  ([C1] inference timed)
-# ============================================================
+
 test_gen.reset()
 t0 = time.time()
 probs = model.predict(test_gen, verbose=1)
@@ -334,9 +302,8 @@ pd.DataFrame({
     "confidence":      probs.max(axis=1),
 }).to_csv(os.path.join(OUTPUT_DIR, "test_predictions.csv"), index=False)
 
-# ------------------------------------------------------------
 # Fig. 6 - confusion matrix
-# ------------------------------------------------------------
+
 cm = confusion_matrix(y_true, y_pred)
 fig, ax = plt.subplots(figsize=(IEEE_COL, 2.55))
 im = ax.imshow(cm, cmap="Blues")
@@ -353,9 +320,8 @@ cb.ax.tick_params(labelsize=6)
 save(fig, os.path.join(OUTPUT_DIR, "05_confusion_matrix.png"),
           os.path.join(PAPER_DIR,  "fig06_base_confusion.png"))
 
-# ============================================================
 # 7. GRAD-CAM  ([C3] no overlapping suptitle)
-# ============================================================
+
 target_layer = next(l for l in reversed(model.layers)
                     if len(getattr(l, "output_shape", ())) == 4)
 print("Grad-CAM target layer:", target_layer.name)
